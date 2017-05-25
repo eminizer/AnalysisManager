@@ -1,3 +1,20 @@
+#printHelp prints the help text for the code I guess. Mostly list of possible actions.
+def printHelp() :
+	print '-------------------------------------------------------------------------------------------------------------'
+	print 'This code is used to keep track of a bunch of analysis details and perform common tasks on many files at once'
+	print 'Here are the available actions, run this with each one separated by an underscore: '
+	print '	haddNTuples: for each sample, hadd files in the nTuple subdirectories into larger files of about 5GB each,'
+	print '	             transferring the results back to the sample top directory on EOS'
+	print '	setupRecoRuns: for each sample, setup up a new Reconstructor directory with scripts, input file, and list of'
+	print '	               jobs based on the aggregated files. DOES NOT submit jobs (and JEC wiggles are hardcoded).'
+	print '	runReco: submit the Reconstructor jobs in already-created Reconstructor run directories to Condor'
+	print '	findfailedjobs: make a new ana.listOfJobs for each sample that includes the jobs that failed'
+	print '	haddrecofiles: aggregate the individual reconstructor run output files to larger ones'
+	print '	skimrecofiles: skim the aggregated reconstructor output files individually; skim cut is hardcoded sorry'
+	print '	skimhaddrecofiles: skim the aggregated reconstructor output files, hadd them, move them to the total files'
+	print '	                   directory.'
+	print '-------------------------------------------------------------------------------------------------------------'
+
 import os
 import subprocess
 import csv
@@ -27,17 +44,3 @@ def buildAnalysis(uname,sfname) :
 		newAnalysis.addSampleFromFileInfo(categories,row)
 	print 'Done building analysis object.'
 	return newAnalysis
-
-#printHelp prints the help text for the code I guess. Mostly list of possible actions.
-def printHelp() :
-	print '-------------------------------------------------------------------------------------------------------------'
-	print 'This code is used to keep track of a bunch of analysis details and perform common tasks on many files at once'
-	print 'Here are the available actions, run this with each one separated by an underscore: '
-	print ' haddNTuples: for each sample, hadd files in the nTuple subdirectories into larger files of about 5GB each,'
-	print '              transferring the results back to the sample top directory on EOS'
-	print ' setupRecoRuns: for each sample, setup up a new Reconstructor directory with scripts, input file, and list of'
-	print '                jobs based on the aggregated files. DOES NOT submit jobs (and JEC wiggles are hardcoded).'
-	print ' runReco: submit the Reconstructor jobs in already-created Reconstructor run directories to Condor'
-	print ' findfailedjobs: make a new ana.listOfJobs for each sample that includes the jobs that failed'
-	print ' haddrecofiles: skim and hadd together the reconstructed ttree files, then transfer to total_ttree_files'
-	print '-------------------------------------------------------------------------------------------------------------'

@@ -1,6 +1,6 @@
 #imports
 from optparse import OptionParser
-from run_helper import *
+from run_helper import printHelp
 
 #run options
 parser = OptionParser()
@@ -20,6 +20,8 @@ if interactive or 'help' in actionlist :
 	printHelp()
 	if len(actionlist)==1 :
 		exit()
+
+from run_helper import *
 
 #get the analysis object
 this_analysis = buildAnalysis(options.username,options.sample_filename)

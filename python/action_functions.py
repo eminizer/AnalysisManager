@@ -209,7 +209,7 @@ def haddRecoFiles(sample) :
 		size_counter = 0.;
 		for thisfile in listOfFiles :
 			nextsize = os.path.getsize(thisfile)
-			if size_counter==0. or size_counter+nextsize>1000000000. or len(hadd_jobs[len(hadd_jobs)-1][1])>=5000 : #1GB or 5,000 file limit
+			if size_counter==0. or size_counter+nextsize>10000000. or len(hadd_jobs[len(hadd_jobs)-1][1])>=3000 : #10MB or 3000 file limit
 				hadd_jobs.append(['aggregated_'+name+'_'+str(len(hadd_jobs))+'.root',[]])
 				size_counter=0.
 			size_counter+=nextsize
@@ -229,9 +229,11 @@ def haddRecoFiles(sample) :
 				isGood = False
 				break
 		if isGood :
-			#print 'yeah I would be deleting files but I am too afraid to leave this in defacto'
+			print 'SUCCESS! Deleting old files.'
 			for thisfile in listOfFiles :
 				os.system('rm -rf '+thisfile)
+		else :
+			print 'FAILED! Old files not deleted.'
 
 def skimRecoFiles(sample) :
 	name = sample.getShortName()
