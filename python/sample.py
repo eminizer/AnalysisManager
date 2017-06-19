@@ -17,6 +17,7 @@ class Sample(object) :
 		self._fullname = dats[cats.index('fname')]
 		self._eosdir = '/store/user/'+uname+'/'+dats[cats.index('eosdir')]+'/'+self._fullname
 		self._xSec = float(dats[cats.index('xsec')])
+		self._kfactor = float(dats[cats.index('kfactor')])
 		self._nrecojobs = int(dats[cats.index('nrecojobs')])
 		#print 'Added sample with shortname %s in group %s to analysis'%(self._shortname,self._group)
 
@@ -81,6 +82,8 @@ class Sample(object) :
 		return subprocess.check_output('xrdfs root://cmseos.fnal.gov/ ls -u '+self._eosdir,shell=True).split('\n')[0][:len('root://xxx.xxx.xxx.xxx:xxxx/')]+self._eosdir
 	def getXSec(self) :
 		return self._xSec
+	def getKFactor(self) :
+		return self._kfactor
 	def getNRecoJobs(self) :
 		return self._nrecojobs
 

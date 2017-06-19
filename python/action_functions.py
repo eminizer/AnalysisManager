@@ -71,7 +71,7 @@ def setupRecoRuns(sample) :
 	print '	making new listOfJobs; sample %s will have %d jobs'%(sample.getShortName(),njobs)
 	for i in range(njobs) :
 		cmd = 'echo "python ./tardir/run_reconstructor.py --name '+sample.getShortName()+' --xSec '+str(sample.getXSec())
-		cmd+= ' --on_grid yes --n_jobs '+str(njobs)+' --i_job '+str(i)
+		cmd+= ' --kFac '+str(sample.getKFactor())+' --on_grid yes --n_jobs '+str(njobs)+' --i_job '+str(i)
 		os.system(cmd+'" >> ana.listOfJobs')
 		#And the JEC-wiggled jobs
 	#	os.system(cmd+' --JES up" >> ana.listOfJobs')
@@ -278,7 +278,8 @@ def skimHaddRecoFiles(sample) :
 		newname = filelist[i].replace('_tree.root','')+'_skim_tree.root'
 		newFile = TFile(newname,'recreate')
 		#newTree = t.CopyTree('weight!=0.')
-		newTree = t.CopyTree('fullselection==1')
+		#newTree = t.CopyTree('fullselection==1')
+		newTree = t.CopyTree('fullselection==1 && eventTopology==2')
 		#newTree = t.CopyTree('eventTopology==1')
 		newTree.Write()
 		newFile.Close()
