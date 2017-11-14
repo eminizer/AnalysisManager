@@ -5,6 +5,7 @@ class Sample(object) :
 
 	def __init__(self) :
 		self._group = ''
+		self._rungroup = ''
 		self._shortname = ''
 		self._fullname = ''
 		self._eosdir = ''
@@ -19,6 +20,7 @@ class Sample(object) :
 		self._xSec = float(dats[cats.index('xsec')])
 		self._kfactor = float(dats[cats.index('kfactor')])
 		self._nrecojobs = int(dats[cats.index('nrecojobs')])
+		self._rungroup = dats[cats.index('rungroup')]
 		#print 'Added sample with shortname %s in group %s to analysis'%(self._shortname,self._group)
 
 	#make a list of tuples that's file URLs and sizes
@@ -51,6 +53,7 @@ class Sample(object) :
 			for file_entry in file_entries :
 				fes = file_entry.split()
 				thisfileurl = 'root://cmseos.fnal.gov/'+self._eosdir+'/'+outputdatasettag+'/'+timestamp+'/'+orgdir+'/'+fes[8]
+		#		print 'thisfileurl = %s'%(thisfileurl) #DEBUG
 				raw_file_tuples.append((thisfileurl,float(fes[4]))) #append a tuple with its URL, size in bytes
 		return raw_file_tuples
 
@@ -60,10 +63,13 @@ class Sample(object) :
 			filelist = subprocess.check_output('eos root://cmseos.fnal.gov ls -l '+self._eosdir+' | grep "aggregated"',shell=True).split('\n')[:-1]
 		except subprocess.CalledProcessError, e:
 			filelist = []
+		#print 'filelist = %s'%(filelist) #DEBUG
 		returnlist = []
 		for item in filelist :
 			isplit = item.split()
+		#	print 'EOSbaseURL = %s'%(self.getEOSBaseURL()) #DEBUG
 			returnlist.append((self.getEOSBaseURL()+'/'+isplit[8],float(isplit[4])))
+		#print 'returnlist = %s'%(returnlist) #DEBUG
 		return returnlist
 
 	def setGroup(self,g) :
@@ -74,6 +80,8 @@ class Sample(object) :
 		self._longname=l
 	def getGroup(self) :
 		return self._group
+	def getRunGroup(self) :
+		return self._rungroup
 	def getShortName(self) :
 		return self._shortname
 	def getEOSDir(self) :
