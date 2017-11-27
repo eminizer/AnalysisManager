@@ -174,6 +174,7 @@ def findFailedJobs(sample,dojec) :
 				elif rootfile.find('JES_down')!=-1 : failedjobnumbers['JES_down'].append(jobnumber)
 				elif rootfile.find('JER_up')!=-1 : failedjobnumbers['JER_up'].append(jobnumber)
 				elif rootfile.find('JER_down')!=-1 : failedjobnumbers['JER_down'].append(jobnumber)
+				else : failedjobnumbers['nom'].append(jobnumber)
 			else : failedjobnumbers['nom'].append(jobnumber)
 	print 'Jobs to rerun: %s'%(failedjobnumbers)
 	#if there are no jobs to rerun, print that this run is finished!
@@ -292,11 +293,11 @@ def haddRecoFiles(sample,dojec) :
 
 def skimRecoFilesParallel(thisfile) :
 	f = TFile(thisfile); t = f.Get('tree')
-	newname = thisfile.replace('_tree.root','')+'_skim_tree.root'
+	newname = thisfile.rstrip('.root')+'_skim.root'
 	newFile = TFile(newname,'recreate')
 	#newTree = t.CopyTree('weight!=0.')
-	newTree	= t.CopyTree('metfilters==1 && trigger==1 && onelepton==1 && btags==1 && ak4jetmult==1 && ak4jetcuts==1 && validminimization==1')
-	#newTree = t.CopyTree('fullselection==1 || wjets_cr_selection==1 || qcd_A_sb_selection==1 || qcd_B_sb_selection==1 || qcd_C_sb_selection==1')
+	#newTree	= t.CopyTree('metfilters==1 && trigger==1 && onelepton==1 && btags==1 && ak4jetmult==1 && ak4jetcuts==1 && validminimization==1')
+	newTree = t.CopyTree('fullselection==1 || wjets_cr_selection==1 || qcd_A_SR_selection==1 || qcd_B_SR_selection==1 || qcd_C_SR_selection==1 || qcd_A_CR_selection==1 || qcd_B_CR_selection==1 || qcd_C_CR_selection==1')
 	#newTree = t.CopyTree('fullselection==1')
 	#newTree = t.CopyTree('eventTopology==1')
 	newTree.Write()
@@ -309,7 +310,7 @@ def skimRecoFiles(sample,dojec) :
 	#next move to the reconstructor run directory 
 	os.chdir(subprocess.check_output('echo $CMSSW_BASE',shell=True).rstrip('\n')+'/src/Analysis/Reconstructor/test/'+name)
 	#skim files
-	os.system('rm -rf *_skim_tree.root')
+	os.system('rm -rf *_skim.root')
 	includeJEC = len(glob.glob('*JES_up*'))>0 and len(glob.glob('*JES_down*'))>0 and len(glob.glob('*JER_up*'))>0 and len(glob.glob('*JER_down*'))>0 and dojec=='yes' 
 	filelist = glob.glob('aggregated_'+name+'_*.root')
 	if len(filelist)==0 :
@@ -344,18 +345,23 @@ def skimHaddRecoFiles(sample,dojec) :
 	name = sample.getShortName()
 	print 'hadd-ing skimmed reconstructor files for sample '+name
 	cwd = os.getcwd()
-	filelist = glob.glob('*_skim_tree.root')
+	filelist = glob.glob('*_skim.root')
 	includeJEC = len(glob.glob('*JES_up*'))>0 and len(glob.glob('*JES_down*'))>0 and len(glob.glob('*JER_up*'))>0 and len(glob.glob('*JER_down*'))>0 and dojec=='yes'
-	if not includeJEC :
-		i = 0
-		while i<len(filelist) :
-			if filelist[i].find('JES')!=-1 or filelist[i].find('JER')!=-1 :
-				filelist.pop(i)
-			else :
-				i+=1
+	i = 0
+	while i<len(filelist) :
+		if filelist[i].find('JES')!=-1 or filelist[i].find('JER')!=-1 :
+			filelist.pop(i)
+		else :
+			i+=1
 	ifiles = []; ifiles_JES_up = []; ifiles_JES_down = []; ifiles_JER_up = []; ifiles_JER_down = []
 	if len(filelist)==1 :
-		cmd = 'cp '+filelist[0]+' '+name+'_skim_all.root '
+		os.system('cp '+filelist[0]+' '+name+'_skim_all.root ')
+		if includeJEC :
+			fnamesplit = filelist[0].split('_')
+			os.system('cp '+filelist[0].replace(fnamesplit[-2]+'_'+fnamesplit[-1],'')+'JES_up_'+fnamesplit[-2]+'_'+fnamesplit[-1]+' '+name+'_JES_up_skim_all.root')
+			os.system('cp '+filelist[0].replace(fnamesplit[-2]+'_'+fnamesplit[-1],'')+'JES_down_'+fnamesplit[-2]+'_'+fnamesplit[-1]+' '+name+'_JES_down_skim_all.root')
+			os.system('cp '+filelist[0].replace(fnamesplit[-2]+'_'+fnamesplit[-1],'')+'JER_up_'+fnamesplit[-2]+'_'+fnamesplit[-1]+' '+name+'_JER_up_skim_all.root')
+			os.system('cp '+filelist[0].replace(fnamesplit[-2]+'_'+fnamesplit[-1],'')+'JER_down_'+fnamesplit[-2]+'_'+fnamesplit[-1]+' '+name+'_JER_down_skim_all.root')
 	else :
 		procs = []
 		for i in range(len(filelist)) :
@@ -364,13 +370,13 @@ def skimHaddRecoFiles(sample,dojec) :
 				cmd = 'hadd -f '+name+'_skim_all_'+str(len(ifiles))+'.root '+thisfile; ifiles.append(name+'_skim_all_'+str(len(ifiles))+'.root')
 				if includeJEC :
 					tfs = thisfile.split('_')
-					cmd_JES_up   = 'hadd -f '+name+'_JES_up_skim_all_'+str(len(ifiles_JES_up))+'.root '+tfs[0]+'_'+tfs[1]+'_JES_up_'+tfs[2]+'_'+tfs[3]
+					cmd_JES_up   = 'hadd -f '+name+'_JES_up_skim_all_'+str(len(ifiles_JES_up))+'.root aggregated_'+name+'_JES_up_'+tfs[-2]+'_'+tfs[-1]
 					ifiles_JES_up.append(name+'_JES_up_skim_all_'+str(len(ifiles_JES_up))+'.root')
-					cmd_JES_down = 'hadd -f '+name+'_JES_down_skim_all_'+str(len(ifiles_JES_down))+'.root '+tfs[0]+'_'+tfs[1]+'_JES_down_'+tfs[2]+'_'+tfs[3]
+					cmd_JES_down = 'hadd -f '+name+'_JES_down_skim_all_'+str(len(ifiles_JES_down))+'.root aggregated_'+name+'_JES_down_'+tfs[-2]+'_'+tfs[-1]
 					ifiles_JES_down.append(name+'_JES_down_skim_all_'+str(len(ifiles_JES_down))+'.root')
-					cmd_JER_up   = 'hadd -f '+name+'_JER_up_skim_all_'+str(len(ifiles_JER_up))+'.root '+tfs[0]+'_'+tfs[1]+'_JER_up_'+tfs[2]+'_'+tfs[3]
+					cmd_JER_up   = 'hadd -f '+name+'_JER_up_skim_all_'+str(len(ifiles_JER_up))+'.root aggregated_'+name+'_JER_up_'+tfs[-2]+'_'+tfs[-1]
 					ifiles_JER_up.append(name+'_JER_up_skim_all_'+str(len(ifiles_JER_up))+'.root')
-					cmd_JER_down = 'hadd -f '+name+'_JER_down_skim_all_'+str(len(ifiles_JER_down))+'.root '+tfs[0]+'_'+tfs[1]+'_JER_down_'+tfs[2]+'_'+tfs[3]
+					cmd_JER_down = 'hadd -f '+name+'_JER_down_skim_all_'+str(len(ifiles_JER_down))+'.root aggregated_'+name+'_JER_down_'+tfs[-2]+'_'+tfs[-1]
 					ifiles_JER_down.append(name+'_JER_down_skim_all_'+str(len(ifiles_JER_down))+'.root')
 			elif (i+1)%100==0 or i==len(filelist)-1 :
 				cmdlist = [cmd]
@@ -383,10 +389,10 @@ def skimHaddRecoFiles(sample,dojec) :
 				cmd+=' '+thisfile
 				if includeJEC :
 					tfs = thisfile.split('_')
-					cmd+=' '+tfs[0]+'_'+tfs[1]+'_JES_up_'+tfs[2]+'_'+tfs[3]
-					cmd+=' '+tfs[0]+'_'+tfs[1]+'_JES_down_'+tfs[2]+'_'+tfs[3]
-					cmd+=' '+tfs[0]+'_'+tfs[1]+'_JER_up_'+tfs[2]+'_'+tfs[3]
-					cmd+=' '+tfs[0]+'_'+tfs[1]+'_JER_down_'+tfs[2]+'_'+tfs[3]
+					cmd_JES_up+=' aggregated_'+name+'_JES_up_'+tfs[-2]+'_'+tfs[-1]
+					cmd_JES_down+=' aggregated_'+name+'_JES_down_'+tfs[-2]+'_'+tfs[-1]
+					cmd_JER_up+=' aggregated_'+name+'_JER_up_'+tfs[-2]+'_'+tfs[-1]
+					cmd_JER_down+=' aggregated_'+name+'_JER_down_'+tfs[-2]+'_'+tfs[-1]
 		for proc in procs :
 			proc.join()
 		cmd = 'hadd -f '+name+'_skim_all.root'
@@ -396,19 +402,19 @@ def skimHaddRecoFiles(sample,dojec) :
 		if includeJEC :
 			cmd_JES_up = 'hadd -f '+name+'_JES_up_skim_all.root'
 			for ifile in ifiles_JES_up :
-				cmd+=' '+ifile
+				cmd_JES_up+=' '+ifile
 			os.system(cmd_JES_up)
 			cmd_JES_down = 'hadd -f '+name+'_JES_down_skim_all.root'
 			for ifile in ifiles_JES_down :
-				cmd+=' '+ifile
+				cmd_JES_down+=' '+ifile
 			os.system(cmd_JES_down)
 			cmd_JER_up = 'hadd -f '+name+'_JER_up_skim_all.root'
 			for ifile in ifiles_JER_up :
-				cmd+=' '+ifile
+				cmd_JER_up+=' '+ifile
 			os.system(cmd_JER_up)
 			cmd_JER_down = 'hadd -f '+name+'_JER_down_skim_all.root'
 			for ifile in ifiles_JER_down :
-				cmd+=' '+ifile
+				cmd_JER_down+=' '+ifile
 			os.system(cmd_JER_down)
 	if not os.path.isdir('../total_ttree_files') : os.mkdir('../total_ttree_files')
 	os.system('mv *_all.root ../total_ttree_files')
