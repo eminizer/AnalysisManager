@@ -39,6 +39,10 @@ def haddNTuples(sample,dojec) :
 	os.chdir(sample.getShortName())
 	procs = []
 	for i in range(len(hadd_jobs)) :
+		if len(procs)>5 :
+			for proc in procs :
+				proc.join()
+			procs = []
 		haddjob = hadd_jobs[i]
 		p = multiprocessing.Process(target=haddNtuplesParallel,args=(haddjob,sample.getEOSBaseURL()))
 		p.start()
@@ -272,6 +276,10 @@ def haddRecoFiles(sample,dojec) :
 		#execute the hadd jobs to aggregate files in this directory
 		procs = []
 		for i in range(len(hadd_jobs)) :
+			if len(procs)>5 :
+				for proc in procs :
+					proc.join()
+				procs = []
 			haddjob = hadd_jobs[i]
 			p = multiprocessing.Process(target=haddRecoFilesParallel,args=(haddjob,))
 			p.start()
@@ -301,6 +309,7 @@ def skimRecoFilesParallel(thisfile) :
 	#newTree = t.CopyTree('fullselection==1')
 	#newTree = t.CopyTree('eventTopology==1')
 	newTree.Write()
+	newFile.Purge()
 	newFile.Close()
 def skimRecoFiles(sample,dojec) :
 	name = sample.getShortName()
@@ -324,7 +333,7 @@ def skimRecoFiles(sample,dojec) :
 				i+=1
 	procs = []
 	for i in range(len(filelist)) :
-		if i%30==0 :
+		if i%5==0 :
 			for proc in procs :
 				proc.join()
 			procs = []
@@ -335,16 +344,20 @@ def skimRecoFiles(sample,dojec) :
 		procs.append(p)
 	for proc in procs :
 		proc.join()
+	os.chdir(cwd)
 	
 
 def skimHaddRecoFilesParallel(cmdlist) :
 	for cmd in cmdlist :
+		print 'new hadd command: %s'%(cmd)
 		os.system(cmd)
 def skimHaddRecoFiles(sample,dojec) :
 	skimRecoFiles(sample,dojec)
 	name = sample.getShortName()
 	print 'hadd-ing skimmed reconstructor files for sample '+name
 	cwd = os.getcwd()
+	#move to the reconstructor run directory 
+	os.chdir(subprocess.check_output('echo $CMSSW_BASE',shell=True).rstrip('\n')+'/src/Analysis/Reconstructor/test/'+name)
 	filelist = glob.glob('*_skim.root')
 	includeJEC = len(glob.glob('*JES_up*'))>0 and len(glob.glob('*JES_down*'))>0 and len(glob.glob('*JER_up*'))>0 and len(glob.glob('*JER_down*'))>0 and dojec=='yes'
 	i = 0
@@ -365,6 +378,10 @@ def skimHaddRecoFiles(sample,dojec) :
 	else :
 		procs = []
 		for i in range(len(filelist)) :
+			if len(procs)>5 :
+				for proc in procs :
+					proc.join()
+				procs = []
 			thisfile = filelist[i]
 			if i%100==0 :
 				cmd = 'hadd -f '+name+'_skim_all_'+str(len(ifiles))+'.root '+thisfile; ifiles.append(name+'_skim_all_'+str(len(ifiles))+'.root')
@@ -378,13 +395,6 @@ def skimHaddRecoFiles(sample,dojec) :
 					ifiles_JER_up.append(name+'_JER_up_skim_all_'+str(len(ifiles_JER_up))+'.root')
 					cmd_JER_down = 'hadd -f '+name+'_JER_down_skim_all_'+str(len(ifiles_JER_down))+'.root aggregated_'+name+'_JER_down_'+tfs[-2]+'_'+tfs[-1]
 					ifiles_JER_down.append(name+'_JER_down_skim_all_'+str(len(ifiles_JER_down))+'.root')
-			elif (i+1)%100==0 or i==len(filelist)-1 :
-				cmdlist = [cmd]
-				if includeJEC :
-					cmdlist.append(cmd_JES_up); cmdlist.append(cmd_JES_down); cmdlist.append(cmd_JER_up); cmdlist.append(cmd_JER_down)
-				p = multiprocessing.Process(target=skimHaddRecoFilesParallel,args=(cmdlist,))
-				p.start()
-				procs.append(p)
 			else :
 				cmd+=' '+thisfile
 				if includeJEC :
@@ -393,32 +403,41 @@ def skimHaddRecoFiles(sample,dojec) :
 					cmd_JES_down+=' aggregated_'+name+'_JES_down_'+tfs[-2]+'_'+tfs[-1]
 					cmd_JER_up+=' aggregated_'+name+'_JER_up_'+tfs[-2]+'_'+tfs[-1]
 					cmd_JER_down+=' aggregated_'+name+'_JER_down_'+tfs[-2]+'_'+tfs[-1]
+			if (i+1)%100==0 or i==len(filelist)-1 :
+				cmdlist = [cmd]
+				if includeJEC :
+					cmdlist.append(cmd_JES_up); cmdlist.append(cmd_JES_down); cmdlist.append(cmd_JER_up); cmdlist.append(cmd_JER_down)
+				p = multiprocessing.Process(target=skimHaddRecoFilesParallel,args=(cmdlist,))
+				p.start()
+				procs.append(p)
 		for proc in procs :
 			proc.join()
-		cmd = 'hadd -f '+name+'_skim_all.root'
-		for ifile in ifiles :
-			cmd+=' '+ifile
-		os.system(cmd)
+		#hadd all of the intermediately-sized files (or rename them if there's only one of each)
+		cmd_dict = {}
+		cmd_dict['']=ifiles
 		if includeJEC :
-			cmd_JES_up = 'hadd -f '+name+'_JES_up_skim_all.root'
-			for ifile in ifiles_JES_up :
-				cmd_JES_up+=' '+ifile
-			os.system(cmd_JES_up)
-			cmd_JES_down = 'hadd -f '+name+'_JES_down_skim_all.root'
-			for ifile in ifiles_JES_down :
-				cmd_JES_down+=' '+ifile
-			os.system(cmd_JES_down)
-			cmd_JER_up = 'hadd -f '+name+'_JER_up_skim_all.root'
-			for ifile in ifiles_JER_up :
-				cmd_JER_up+=' '+ifile
-			os.system(cmd_JER_up)
-			cmd_JER_down = 'hadd -f '+name+'_JER_down_skim_all.root'
-			for ifile in ifiles_JER_down :
-				cmd_JER_down+=' '+ifile
-			os.system(cmd_JER_down)
+			cmd_dict['JES_up']=ifiles_JES_up
+			cmd_dict['JES_down']=ifiles_JES_down
+			cmd_dict['JER_up']=ifiles_JER_up
+			cmd_dict['JER_down']=ifiles_JER_down
+		for cmd_key in cmd_dict :
+			list_of_files = cmd_dict[cmd_key]
+			cmd_stub = name
+			if cmd_key!='' :
+				cmd_stub+='_'+cmd_key
+			cmd_stub+='_skim_all.root'
+			if len(list_of_files)==1 :
+				cmd='mv '+list_of_files[0]+' '+cmd_stub
+			else :
+				cmd='hadd -f '+cmd_stub
+				for ifile in list_of_files :
+					cmd+=' '+ifile
+			print 'new hadd command: %s'%(cmd)
+			os.system(cmd)
 	if not os.path.isdir('../total_ttree_files') : os.mkdir('../total_ttree_files')
 	os.system('mv *_all.root ../total_ttree_files')
 	os.system('rm -rf *_skim_*.root')
+	os.system('rm -rf *_skim.root')
 	#return to the previous working directory
 	os.chdir(cwd)
 	print 'Done.'
