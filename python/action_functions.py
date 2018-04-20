@@ -4,7 +4,7 @@ import glob
 import multiprocessing
 from ROOT import TFile
 
-def haddNtuplesParallel(haddjob,sampleeosurl,dojec) :
+def haddNtuplesParallel(haddjob,sampleeosurl) :
 	#the hadd command
 	#print 'command has %d files to add'%(len(haddjob[1])) #DEBUG
 	cmd = 'hadd '+haddjob[0]
