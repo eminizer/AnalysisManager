@@ -17,11 +17,20 @@ interactive = options.interactive.lower()=='yes'
 
 #first check if we just want help
 actionlist = options.actions.split('__')
-acitonlist = [x.lower() for x in actionlist]
+actionlist = [x.lower() for x in actionlist]
 if 'help' in actionlist :
 	printHelp()
 	if len(actionlist)==1 :
 		exit()
+
+#double-check that I'm not running the "haddRecoFiles" command on anything other than one sample at a time, and that I'm not running it with anything else
+sgroups = [x.lower() for x in options.samples.split('__')]
+rgroups = [x for x in options.rungroups.split('__')]
+if ('haddrecofiles' in actionlist) and (len(actionlist)>1 or len(sgroups)>1 or rgroups!=['-1']) :
+	print "ERROR: You want to hadd together the reco files, but you're not being careful enough."
+	print "I know it's annoying but this command really can have bad consequences so you can't just use it all willy-nilly"
+	print "Please rerun the command on ONE SAMPLE at a time, and note that you have to confirm it's behavior manually before it will complete."
+	exit()
 
 from run_helper import *
 
@@ -32,8 +41,6 @@ if this_analysis==None :
 	exit()
 
 #for each of the sample groups we want to run
-sgroups = [x.lower() for x in options.samples.split('__')]
-rgroups = [x for x in options.rungroups.split('__')]
 for i in range(len(this_analysis.getSampleList())) :
 	sample = this_analysis.getSampleList()[i]
 	thisSGroup = sample.getGroup()

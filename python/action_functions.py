@@ -276,7 +276,7 @@ def haddRecoFiles(sample,dojec) :
 		#execute the hadd jobs to aggregate files in this directory
 		procs = []
 		for i in range(len(hadd_jobs)) :
-			if len(procs)>5 :
+			if len(procs)>1 : #honestly this should not be in parallel
 				for proc in procs :
 					proc.join()
 				procs = []
@@ -293,9 +293,11 @@ def haddRecoFiles(sample,dojec) :
 				isGood = False
 				break
 		if isGood :
-			print 'SUCCESS! Deleting old files.'
-			for thisfile in listOfFiles :
-				os.system('rm -rf '+thisfile)
+			print 'SUCCESS! (I think.) Please double-check the output above and make sure things went okay.'
+			check = raw_input('Are you sure you want to delete the old files? (y/n): ')
+			if check.lower() in ['y','yes'] :
+				for thisfile in listOfFiles :
+					os.system('rm -rf '+thisfile)
 		else :
 			print 'FAILED! Old files not deleted; try again after you fix whatever is wrong.'
 
