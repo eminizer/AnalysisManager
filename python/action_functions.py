@@ -4,6 +4,12 @@ import glob
 import multiprocessing
 from ROOT import TFile
 
+JEC_STEMS = ['nominal',
+			 'AK4JESPU_up','AK4JESEta_up','AK4JESPt_up','AK4JESScale_up','AK4JESTime_up','AK4JESFlav_up','AK4JERStat_up','AK4JERSys_up',
+			 'AK4JESPU_dn','AK4JESEta_dn','AK4JESPt_dn','AK4JESScale_dn','AK4JESTime_dn','AK4JESFlav_dn','AK4JERStat_dn','AK4JERSys_dn',
+			 'AK8JESPU_up','AK8JESEta_up','AK8JESPt_up','AK8JESScale_up','AK8JESTime_up','AK8JESFlav_up','AK8JERStat_up','AK8JERSys_up',
+			 'AK8JESPU_dn','AK8JESEta_dn','AK8JESPt_dn','AK8JESScale_dn','AK8JESTime_dn','AK8JESFlav_dn','AK8JERStat_dn','AK8JERSys_dn',]
+
 def haddNtuplesParallel(haddjob,sampleeosurl) :
 	#the hadd command
 	#print 'command has %d files to add'%(len(haddjob[1])) #DEBUG
@@ -14,7 +20,7 @@ def haddNtuplesParallel(haddjob,sampleeosurl) :
 	#the xrdcp command
 	os.system('xrdcp '+haddjob[0]+' '+sampleeosurl+'/'+haddjob[0])
 #hadd a sample's individual nTuple root files into a smaller number of files, each about 5GB, then copy back to EOS
-def haddNTuples(sample,dojec) :
+def haddNTuples(sample,dojec,donominal) :
 	print 'hadding nTuples for sample '+sample.getShortName()
 	cwd = os.getcwd()
 	#remove the aggregated files that might already be in the directory
@@ -56,7 +62,7 @@ def haddNTuples(sample,dojec) :
 	print 'Done.'
 
 #setup runs of the reconstructor: regenerate the directories, scripts, input file and ana.listOfJobs
-def setupRecoRuns(sample,dojec) :	
+def setupRecoRuns(sample,dojec,donominal) :	
 	name = sample.getShortName()
 	print 'setting up reconstructor runs for sample '+name
 	#first find out where we are right now so we can return here
@@ -85,23 +91,25 @@ def setupRecoRuns(sample,dojec) :
 	njobs = sample.getNRecoJobs()
 	if njobs==1 :
 		njobs = int(total_filedata/2500000.) #one job per 2.5 MB (20,000 jobs for a 50GB sample)
-	print '	making new listOfJobs; sample %s will have %d jobs (%d total)'%(name,njobs,njobs*5 if (dojec=='yes' and name.find('Run2016')==-1) else njobs)
-	for i in range(njobs) :
-		cmd = 'echo "python ./tardir/run_reconstructor.py --name '+sample.getShortName()+' --xSec '+str(sample.getXSec())
-		cmd+= ' --kFac '+str(sample.getKFactor())+' --on_grid yes --n_jobs '+str(njobs)+' --i_job '+str(i)
-		os.system(cmd+'" >> ana.listOfJobs')
-		if dojec=='yes' and name.find('Run2016')==-1 :
-			#And the JEC-wiggled jobs
-			os.system(cmd+' --JES up" >> ana.listOfJobs_JES_up')
-			os.system(cmd+' --JES down" >> ana.listOfJobs_JES_down')
-			os.system(cmd+' --JER up" >> ana.listOfJobs_JER_up')
-			os.system(cmd+' --JER down" >> ana.listOfJobs_JER_down')
+	nJobsJECWiggled = njobs/10 if njobs>50 else njobs
+	nTotalJobs = njobs if donominal else 0
+	if dojec :
+		nTotalJobs+=(len(JEC_STEMS)-1)*nJobsJECWiggled
+	print '	making new listOfJobs files; sample %s requested %d jobs (will be %d really, since doNominal=%s and doJEC=%s)'%(name,njobs,nTotalJobs,donominal,dojec)
+	for JEC_STEM in JEC_STEMS :
+		if (JEC_STEM=='nominal' and not donominal) or (JEC_STEM!='nominal' and not dojec) :
+			continue
+		thisNJobs = njobs if JEC_STEM=='nominal' else nJobsJECWiggled
+		for i in range(thisNJobs) :
+			cmd = 'echo "python ./tardir/run_reconstructor.py --name '+sample.getShortName()+' --xSec '+str(sample.getXSec())
+			cmd+= ' --kFac '+str(sample.getKFactor())+' --on_grid yes --n_jobs '+str(thisNJobs)+' --i_job '+str(i)+' --JEC '+JEC_STEM
+			os.system(cmd+'" >> ana.listOfJobs_'+JEC_STEM)
 	#return to the previous working directory
 	os.chdir(cwd)
 	print 'Done.'
 
 #run the new runs of the reconstructor
-def runReco(sample,dojec) :
+def runReco(sample,dojec,donominal) :
 	print 'submitting reconstructor jobs for sample '+sample.getShortName()
 	#first find out where we are right now so we can return here
 	cwd = os.getcwd()
@@ -112,112 +120,84 @@ def runReco(sample,dojec) :
 	#tar up files, create proxy, create command file, submit jobs
 	os.system('tar czvf tarball.tgz ./input.txt -C ../../python/ . -C ../test/other_input_files/ .')
 	os.system('voms-proxy-init --voms cms')
-	os.system('python ./runManySections.py --createCommandFile --addLog --setTarball=tarball.tgz ana.listOfJobs commands.cmd')
-	os.system('python ./runManySections.py --submitCondor --noDeleteCondor commands.cmd')
-	#and for the JEC wiggled jobs
-	if dojec=='yes' :
-		apps = ['JES_up','JES_down','JER_up','JER_down']
-		for app in apps :
-			if os.path.isfile('ana.listOfJobs_'+app) :
-				print 'submitting jobs for '+app+' wiggled samples'
-				os.system('python ./runManySections.py --createCommandFile --addLog --setTarball=tarball.tgz ana.listOfJobs_'+app+' commands_'+app+'.cmd')
-				os.system('python ./runManySections.py --submitCondor --noDeleteCondor commands_'+app+'.cmd')
+	for JEC_STEM in JEC_STEMS :
+		if (JEC_STEM=='nominal' and not donominal) or (JEC_STEM!='nominal' and not dojec) :
+			continue
+		os.system('python ./runManySections.py --createCommandFile --addLog --setTarball=tarball.tgz ana.listOfJobs_'+JEC_STEM+' commands_'+JEC_STEM+'.cmd')
+		os.system('python ./runManySections.py --submitCondor --noDeleteCondor commands_'+JEC_STEM+'.cmd')
 	#return to the previous working directory
 	os.chdir(cwd)
 	print 'Done.'
 
 #find the jobs that failed in the sample's reco directory and make a new ana.listOfJobs with just those
-def findFailedJobs(sample,dojec) :
+def findFailedJobs(sample,dojec,donominal) :
 	name = sample.getShortName()
 	print 'finding failed jobs for sample '+name
 	#first find out where we are right now so we can return here
 	cwd = os.getcwd()
 	#next move to the reconstructor run directory 
-	os.chdir(subprocess.check_output('echo $CMSSW_BASE',shell=True).rstrip('\n')+'/src/Analysis/Reconstructor/test/'+name)
-	#did this directory have JEC wiggled runs in it or not?
-	includeJEC = len(glob.glob('*JES_up*'))>0 and len(glob.glob('*JES_down*'))>0 and len(glob.glob('*JER_up*'))>0 and len(glob.glob('*JER_down*'))>0  
-	#get the list of all the root files, and the number of original jobs
-	rootfilelist = glob.glob('*_tree.root')
-	nJobs = int(os.popen('cat ana.listOfJobs_all | wc -l').read()) if len(glob.glob('ana.listOfJobs_all'))!=0 else int(os.popen('cat ana.listOfJobs | wc -l').read())
+	os.chdir(subprocess.check_output('echo $CMSSW_BASE',shell=True).rstrip('\n')+'/src/Analysis/Reconstructor/test/'+name) 
+	#get the lists of root files, and the numbers of original jobs
+	rootfilelists = {}
+	nJobs={}
+	for JEC_STEM in JEC_STEMS :
+		if (JEC_STEM=='nominal' and not donominal) or (JEC_STEM!='nominal' and not dojec) :
+			continue
+		if JEC_STEM=='nominal' :
+			allrootfiles=glob.glob(name+'_*_tree.root')
+			for rfile in allrootfiles :
+				for JEC_STEM in JEC_STEMS :
+					if rfile.find(JEC_STEM)!=-1 :
+						allrootfiles.pop(allrootfiles.index(rfile))
+			rootfilelists[JEC_STEM]=allrootfiles
+		else :
+			rootfilelists[JEC_STEM]=glob.glob(name+'_'+JEC_STEM+'_*tree.root')
+		nJobs[JEC_STEM]=int(os.popen('cat ana.listOfJobs_'+JEC_STEM+' | wc -l').read())
 	#make a dictionary of the failed job numbers/which JEC wiggles they are
-	failedjobnumbers = {'nom':[],'JES_up':[],'JES_down':[],'JER_up':[],'JER_down':[]}
-	#first look for jobs that didn't return anything
-	print 'len(rootfilelist)=%d, nJobs=%d'%(len(rootfilelist),nJobs)
-	if (includeJEC and len(rootfilelist) < nJobs*5) or len(rootfilelist) < nJobs :
-		#for each job number
-		for i in range(nJobs) :
-			theseRootFiles = glob.glob('*_'+str(i)+'_tree.root')
-			if includeJEC :
-				#there should be five files per job
-				if len(theseRootFiles) < 5 :
-					print 'Missing some output from job number '+str(i)+', checking which of the JEC wiggles it is'
-					missingjobtypes = ['nom','JES_up','JES_down','JER_up','JER_down']
-					for rfilename in theseRootFiles :
-						if rfilename.find('JES')==-1 and rfilename.find('JER')==-1: missingjobtypes.pop(missingjobtypes.index('nom'))
-						elif rfilename.find('JES_up')!=-1 : missingjobtypes.pop(missingjobtypes.index('JES_up'))
-						elif rfilename.find('JES_down')!=-1 : missingjobtypes.pop(missingjobtypes.index('JES_down'))
-						elif rfilename.find('JER_up')!=-1 : missingjobtypes.pop(missingjobtypes.index('JER_up'))
-						elif rfilename.find('JER_down')!=-1 : missingjobtypes.pop(missingjobtypes.index('JER_down'))
-					for jtype in missingjobtypes :
-						failedjobnumbers[jtype].append(i)
-			elif len(theseRootFiles)==0 :
-				print 'Missing some output from job number '+str(i)
-				failedjobnumbers['nom'].append(i)
-	#now check the file sizes to find any that are abnormally small
-	totalsize = 0.
-	for rootfile in rootfilelist :
-		totalsize+=os.path.getsize(rootfile)
-	expected_contribution = totalsize/len(rootfilelist)
-	for rootfile in rootfilelist :
-		filesize = os.path.getsize(rootfile)
-		if filesize/expected_contribution<0.50 :
-			print 'File '+rootfile+' is too small, its size is '+str(filesize)+' bytes, contributing '+str(filesize/expected_contribution)+' of its expectation'
-			jobnumber = int(rootfile.rstrip('_tree.root').split('_')[len(rootfile.rstrip('_tree.root').split('_'))-1])
-			if includeJEC :
-				if rootfile.find('JES_up')!=-1 : failedjobnumbers['JES_up'].append(jobnumber)
-				elif rootfile.find('JES_down')!=-1 : failedjobnumbers['JES_down'].append(jobnumber)
-				elif rootfile.find('JER_up')!=-1 : failedjobnumbers['JER_up'].append(jobnumber)
-				elif rootfile.find('JER_down')!=-1 : failedjobnumbers['JER_down'].append(jobnumber)
-				else : failedjobnumbers['nom'].append(jobnumber)
-			else : failedjobnumbers['nom'].append(jobnumber)
-	print 'Jobs to rerun: %s'%(failedjobnumbers)
+	failedjobnumbers = {}
+	for JEC_STEM in JEC_STEMS :
+		if (JEC_STEM=='nominal' and not donominal) or (JEC_STEM!='nominal' and not dojec) :
+			continue
+		print 'checking output for JEC stem %s: len(rootfilelist)=%d, nJobs=%d'%(JEC_STEM,len(rootfilelists[JEC_STEM]),nJobs[JEC_STEM])
+		failedjobnumbers[JEC_STEM]=[]
+		#first look for jobs that didn't return anything
+		if len(rootfilelists[JEC_STEM]) < nJobs[JEC_STEM] : #something's missing
+			#for each job number
+			for i in range(nJobs[JEC_STEM]) :
+				checkfile = [f for f in rootfilelists[JEC_STEM] if '_'+str(i)+'_tree.root' in f]
+				if len(checkfile)!=1 :
+					print 'Missing some output from job number '+str(i)+' for JEC '+JEC_STEM
+					failedjobnumbers[JEC_STEM].append(i)
+		#now check the file sizes to find any that are abnormally small
+		totalsize = 0.
+		for rootfile in rootfilelists[JEC_STEM] :
+			totalsize+=os.path.getsize(rootfile)
+		expected_contribution = totalsize/len(rootfilelists[JEC_STEM]) if len(rootfilelists[JEC_STEM])!=0 else 0.
+		for rootfile in rootfilelists[JEC_STEM] :
+			filesize = os.path.getsize(rootfile)
+			if filesize/expected_contribution<0.80 :
+				print 'File '+rootfile+' is too small, its size is '+str(filesize)+' bytes, contributing '+str(filesize/expected_contribution)+' of its expectation'
+				failedjobnumbers[JEC_STEM].append(int(rootfile.rstrip('_tree.root').split('_')[-1]))
+	#print 'Jobs to rerun: %s'%(failedjobnumbers)
 	#if there are no jobs to rerun, print that this run is finished!
-	if len(failedjobnumbers['nom'])==0 and len(failedjobnumbers['JES_up'])==0 and len(failedjobnumbers['JES_down'])==0 and len(failedjobnumbers['JER_up'])==0 and len(failedjobnumbers['JER_down'])==0 :
+	nFailedJobs=sum([len(fjn) for fjn in failedjobnumbers.values()])
+	if nFailedJobs==0 :
 		print 'All jobs complete!'
 	else :
-		#sort the lists of failed job numbers
-		for thislist in failedjobnumbers.values() :
-			thislist.sort()
-		#open the list of all the jobs and add the failed ones to the new file
-		if not os.path.isfile('ana.listOfJobs_all') :
-			#print 'TOTAL LIST OF JOBS DOES NOT EXIST YET, COPYING CURRENT LIST OF JOBS!!'
-			os.system('mv ana.listOfJobs ana.listOfJobs_all')
-			if includeJEC :
-				for app in failedjobnumbers.keys() :
-					if app!='nom' :
-						os.system('mv ana.listOfJobs_'+app+' ana.listOfJobs_'+app+'_all')
-		else :
-			os.system('rm -rf ana.listOfJobs')
 		intjobs=[]
-		for app in failedjobnumbers.keys() :
-			joblist = None
-			if app=='nom' : joblist = open('ana.listOfJobs_all','r')
-			else : 
-				if dojec=='yes' :
-					joblist = open('ana.listOfJobs_'+app+'_all','r')
-				else :
-					continue
-			linecount = 0
-			for job in joblist.readlines() :
-				jobreal = job.rstrip('\n')
-				if linecount in failedjobnumbers[app] : 
-					os.system('echo "'+jobreal+'" >> ana.listOfJobs')
+		if not os.path.isfile('ana.listOfJobs_rerun') :
+			os.system('touch ana.listOfJobs_rerun')
+		for JEC_STEM in failedjobnumbers :
+			linecount=0
+			for job in open('ana.listOfJobs_'+JEC_STEM).readlines() :
+				if linecount in failedjobnumbers[JEC_STEM] :
+					os.system('echo "'+job.rstrip('\n')+'" >> ana.listOfJobs_rerun')
 					intjob ='python ../../python/'
-					for nexts in jobreal[len('python ./tardir/'):].split('--on_grid yes') :
+					for nexts in job.rstrip('\n')[len('python ./tardir/'):].split('--on_grid yes') :
 						intjob+=nexts
 					intjobs.append(intjob)
 				linecount+=1
-		check = raw_input('Would you like to print the list of jobs to rerun ('+str(len(intjobs))+' total)? (y/n) : ')
+		check = raw_input('Would you like to print the list of jobs to rerun interactively ('+str(len(intjobs))+' total)? (y/n) : ')
 		if check.lower().find('y')!=-1 :
 			print '---------------------'
 			for i in range(len(intjobs)) :
@@ -225,6 +205,12 @@ def findFailedJobs(sample,dojec) :
 				print intjobs[i]
 				print ''
 			print '---------------------'
+		check = raw_input('Would you like to resubmit the failed jobs on condor now? If you wait you will have to submit ana.listOfJobs_rerun manually! (y/n) : ')
+		if check.lower() in ['y','yes'] :
+			os.system('tar czvf tarball.tgz ./input.txt -C ../../python/ . -C ../test/other_input_files/ .')
+			os.system('voms-proxy-init --voms cms')
+			os.system('python ./runManySections.py --createCommandFile --addLog --setTarball=tarball.tgz ana.listOfJobs_rerun commands_rerun.cmd')
+			os.system('python ./runManySections.py --submitCondor --noDeleteCondor commands_rerun.cmd')
 	os.system('bash cleanup.bash')
 	#return to the previous working directory
 	os.chdir(cwd)
@@ -237,42 +223,41 @@ def haddRecoFilesParallel(haddjob) :
 	for f in haddjob[1] :
 		cmd+=' '+f
 	os.system(cmd)
-def haddRecoFiles(sample,dojec) :
+def haddRecoFiles(sample,dojec,donominal) :
 	name = sample.getShortName()
 	print 'hadd-ing reconstructor files for sample '+name
 	#first find out where we are right now so we can return here
 	cwd = os.getcwd()
 	#next move to the reconstructor run directory 
 	os.chdir(subprocess.check_output('echo $CMSSW_BASE',shell=True).rstrip('\n')+'/src/Analysis/Reconstructor/test/'+name)
-	#get the list of reco files
-	includeJEC = len(glob.glob('*JES_up*'))>0 and len(glob.glob('*JES_down*'))>0 and len(glob.glob('*JER_up*'))>0 and len(glob.glob('*JER_down*'))>0 and dojec=='yes'
-	listsOfFiles = [glob.glob(name+'_*_tree.root')]
-	names = [name]
-	i=0
-	while i<len(listsOfFiles[0]) :
-		thisfile = listsOfFiles[0][i]
-		if thisfile.find('JES')!= -1 or thisfile.find('JER')!=-1 :
-			listsOfFiles[0].pop(i)
+	#for each JEC wiggle
+	for JEC_STEM in JEC_STEMS :
+		if (JEC_STEM=='nominal' and not donominal) or (JEC_STEM!='nominal' and not dojec) :
+			continue
+		#get the list of rootfiles
+		rootfilelist=None
+		if JEC_STEM=='nominal' :
+			allrootfiles=glob.glob(name+'_*_tree.root')
+			for rfile in allrootfiles :
+				for JEC_STEM in JEC_STEMS :
+					if rfile.find(JEC_STEM)!=-1 :
+						allrootfiles.pop(allrootfiles.index(rfile))
+			rootfilelist=allrootfiles
 		else :
-			i+=1
-	if includeJEC :
-		listsOfFiles.append(glob.glob(name+'_JES_up_*_tree.root')); names.append(name+'_JES_up')
-		listsOfFiles.append(glob.glob(name+'_JES_down_*_tree.root')); names.append(name+'_JES_down')
-		listsOfFiles.append(glob.glob(name+'_JER_up_*_tree.root')); names.append(name+'_JER_up')
-		listsOfFiles.append(glob.glob(name+'_JER_down_*_tree.root')); names.append(name+'_JER_down')
-	for i in range(len(listsOfFiles)) :
-		listOfFiles = listsOfFiles[i]
-		name = names[i]
+			rootfilelist=glob.glob(name+'_'+JEC_STEM+'_*_tree.root')
 		#make the list of hadd jobs
 		hadd_jobs = []
 		size_counter = 0.;
-		for thisfile in listOfFiles :
+		for thisfile in rootfilelist :
 			nextsize = os.path.getsize(thisfile)
 			if size_counter==0. or size_counter+nextsize>250000000. or len(hadd_jobs[len(hadd_jobs)-1][1])>=500 : #250MB or 500 file limit
-				hadd_jobs.append(['aggregated_'+name+'_'+str(len(hadd_jobs))+'.root',[]])
+				if JEC_STEM=='nominal' :
+					hadd_jobs.append(['aggregated_'+name+'_'+str(len(hadd_jobs))+'.root',[]])
+				else :
+					hadd_jobs.append(['aggregated_'+name+'_'+JEC_STEM+'_'+str(len(hadd_jobs))+'.root',[]])
 				size_counter=0.
 			size_counter+=nextsize
-			hadd_jobs[len(hadd_jobs)-1][1].append(thisfile)
+			hadd_jobs[-1][1].append(thisfile)
 		#execute the hadd jobs to aggregate files in this directory
 		procs = []
 		for i in range(len(hadd_jobs)) :
@@ -289,14 +274,14 @@ def haddRecoFiles(sample,dojec) :
 		#make sure it ran correctly and if so delete the non-hadded files
 		isGood = True
 		for haddjob in hadd_jobs :
-			if (not os.path.isfile(haddjob[0])) or os.path.getsize(haddjob[0])<100000. : #gotta exist and be at least 100kB
+			if (not os.path.isfile(haddjob[0])) or os.path.getsize(haddjob[0])<10000. : #gotta exist and be at least 10kB
 				isGood = False
 				break
 		if isGood :
 			print 'SUCCESS! (I think.) Please double-check the output above and make sure things went okay.'
 			check = raw_input('Are you sure you want to delete the old files? (y/n): ')
 			if check.lower() in ['y','yes'] :
-				for thisfile in listOfFiles :
+				for thisfile in rootfilelist :
 					os.system('rm -rf '+thisfile)
 		else :
 			print 'FAILED! Old files not deleted; try again after you fix whatever is wrong.'
@@ -313,7 +298,7 @@ def skimRecoFilesParallel(thisfile) :
 	newTree.Write()
 	newFile.Purge()
 	newFile.Close()
-def skimRecoFiles(sample,dojec) :
+def skimRecoFiles(sample,dojec,donominal) :
 	name = sample.getShortName()
 	print 'skimming reconstructor files for sample '+name
 	#first find out where we are right now so we can return here
@@ -322,17 +307,9 @@ def skimRecoFiles(sample,dojec) :
 	os.chdir(subprocess.check_output('echo $CMSSW_BASE',shell=True).rstrip('\n')+'/src/Analysis/Reconstructor/test/'+name)
 	#skim files
 	os.system('rm -rf *_skim.root')
-	includeJEC = len(glob.glob('*JES_up*'))>0 and len(glob.glob('*JES_down*'))>0 and len(glob.glob('*JER_up*'))>0 and len(glob.glob('*JER_down*'))>0 and dojec=='yes' 
 	filelist = glob.glob('aggregated_'+name+'_*.root')
 	if len(filelist)==0 :
 		filelist = glob.glob('*_tree.root')
-	if not includeJEC :
-		i = 0
-		while i<len(filelist) :
-			if filelist[i].find('JES')!=-1 or filelist[i].find('JER')!=-1 :
-				filelist.pop(i)
-			else :
-				i+=1
 	procs = []
 	for i in range(len(filelist)) :
 		if i%5==0 :
@@ -346,93 +323,73 @@ def skimRecoFiles(sample,dojec) :
 		procs.append(p)
 	for proc in procs :
 		proc.join()
-	os.chdir(cwd)
-	
+	os.chdir(cwd)	
 
 def skimHaddRecoFilesParallel(cmdlist) :
 	for cmd in cmdlist :
 		print 'new hadd command: %s'%(cmd)
 		os.system(cmd)
-def skimHaddRecoFiles(sample,dojec) :
-	skimRecoFiles(sample,dojec)
+def skimHaddRecoFiles(sample,dojec,donominal) :
+	skimRecoFiles(sample,dojec,donominal)
 	name = sample.getShortName()
 	print 'hadd-ing skimmed reconstructor files for sample '+name
 	cwd = os.getcwd()
 	#move to the reconstructor run directory 
 	os.chdir(subprocess.check_output('echo $CMSSW_BASE',shell=True).rstrip('\n')+'/src/Analysis/Reconstructor/test/'+name)
-	filelist = glob.glob('*_skim.root')
-	includeJEC = len(glob.glob('*JES_up*'))>0 and len(glob.glob('*JES_down*'))>0 and len(glob.glob('*JER_up*'))>0 and len(glob.glob('*JER_down*'))>0 and dojec=='yes'
-	i = 0
-	while i<len(filelist) :
-		if filelist[i].find('JES')!=-1 or filelist[i].find('JER')!=-1 :
-			filelist.pop(i)
+	#for each JEC wiggle
+	for JEC_STEM in JEC_STEMS :
+		if (JEC_STEM=='nominal' and not donominal) or (JEC_STEM!='nominal' and not dojec) :
+			continue
+		#get the list of rootfiles
+		rootfilelist=None
+		if JEC_STEM=='nominal' :
+			allrootfiles=glob.glob('*_skim.root')
+			for rfile in allrootfiles :
+				for JEC_STEM in JEC_STEMS :
+					if rfile.find(JEC_STEM)!=-1 :
+						allrootfiles.pop(allrootfiles.index(rfile))
+			rootfilelist=allrootfiles
 		else :
-			i+=1
-	ifiles = []; ifiles_JES_up = []; ifiles_JES_down = []; ifiles_JER_up = []; ifiles_JER_down = []
-	if len(filelist)==1 :
-		os.system('cp '+filelist[0]+' '+name+'_skim_all.root ')
-		if includeJEC :
-			fnamesplit = filelist[0].split('_')
-			os.system('cp '+filelist[0].replace(fnamesplit[-2]+'_'+fnamesplit[-1],'')+'JES_up_'+fnamesplit[-2]+'_'+fnamesplit[-1]+' '+name+'_JES_up_skim_all.root')
-			os.system('cp '+filelist[0].replace(fnamesplit[-2]+'_'+fnamesplit[-1],'')+'JES_down_'+fnamesplit[-2]+'_'+fnamesplit[-1]+' '+name+'_JES_down_skim_all.root')
-			os.system('cp '+filelist[0].replace(fnamesplit[-2]+'_'+fnamesplit[-1],'')+'JER_up_'+fnamesplit[-2]+'_'+fnamesplit[-1]+' '+name+'_JER_up_skim_all.root')
-			os.system('cp '+filelist[0].replace(fnamesplit[-2]+'_'+fnamesplit[-1],'')+'JER_down_'+fnamesplit[-2]+'_'+fnamesplit[-1]+' '+name+'_JER_down_skim_all.root')
-	else :
-		procs = []
-		for i in range(len(filelist)) :
-			if len(procs)>5 :
-				for proc in procs :
-					proc.join()
-				procs = []
-			thisfile = filelist[i]
-			if i%100==0 :
-				cmd = 'hadd -f '+name+'_skim_all_'+str(len(ifiles))+'.root '+thisfile; ifiles.append(name+'_skim_all_'+str(len(ifiles))+'.root')
-				if includeJEC :
-					tfs = thisfile.split('_')
-					cmd_JES_up   = 'hadd -f '+name+'_JES_up_skim_all_'+str(len(ifiles_JES_up))+'.root aggregated_'+name+'_JES_up_'+tfs[-2]+'_'+tfs[-1]
-					ifiles_JES_up.append(name+'_JES_up_skim_all_'+str(len(ifiles_JES_up))+'.root')
-					cmd_JES_down = 'hadd -f '+name+'_JES_down_skim_all_'+str(len(ifiles_JES_down))+'.root aggregated_'+name+'_JES_down_'+tfs[-2]+'_'+tfs[-1]
-					ifiles_JES_down.append(name+'_JES_down_skim_all_'+str(len(ifiles_JES_down))+'.root')
-					cmd_JER_up   = 'hadd -f '+name+'_JER_up_skim_all_'+str(len(ifiles_JER_up))+'.root aggregated_'+name+'_JER_up_'+tfs[-2]+'_'+tfs[-1]
-					ifiles_JER_up.append(name+'_JER_up_skim_all_'+str(len(ifiles_JER_up))+'.root')
-					cmd_JER_down = 'hadd -f '+name+'_JER_down_skim_all_'+str(len(ifiles_JER_down))+'.root aggregated_'+name+'_JER_down_'+tfs[-2]+'_'+tfs[-1]
-					ifiles_JER_down.append(name+'_JER_down_skim_all_'+str(len(ifiles_JER_down))+'.root')
+			rootfilelist=glob.glob('*_'+JEC_STEM+'_*_skim.root')
+		#if there's only one file just copy it
+		if len(rootfilelist)==1 :
+			if JEC_STEM=='nominal' :
+				os.system('cp '+rootfilelist[0]+' '+name+'_skim_all.root ')
 			else :
-				cmd+=' '+thisfile
-				if includeJEC :
-					tfs = thisfile.split('_')
-					cmd_JES_up+=' aggregated_'+name+'_JES_up_'+tfs[-2]+'_'+tfs[-1]
-					cmd_JES_down+=' aggregated_'+name+'_JES_down_'+tfs[-2]+'_'+tfs[-1]
-					cmd_JER_up+=' aggregated_'+name+'_JER_up_'+tfs[-2]+'_'+tfs[-1]
-					cmd_JER_down+=' aggregated_'+name+'_JER_down_'+tfs[-2]+'_'+tfs[-1]
-			if (i+1)%100==0 or i==len(filelist)-1 :
-				cmdlist = [cmd]
-				if includeJEC :
-					cmdlist.append(cmd_JES_up); cmdlist.append(cmd_JES_down); cmdlist.append(cmd_JER_up); cmdlist.append(cmd_JER_down)
-				p = multiprocessing.Process(target=skimHaddRecoFilesParallel,args=(cmdlist,))
-				p.start()
-				procs.append(p)
-		for proc in procs :
-			proc.join()
-		#hadd all of the intermediately-sized files (or rename them if there's only one of each)
-		cmd_dict = {}
-		cmd_dict['']=ifiles
-		if includeJEC :
-			cmd_dict['JES_up']=ifiles_JES_up
-			cmd_dict['JES_down']=ifiles_JES_down
-			cmd_dict['JER_up']=ifiles_JER_up
-			cmd_dict['JER_down']=ifiles_JER_down
-		for cmd_key in cmd_dict :
-			list_of_files = cmd_dict[cmd_key]
+				os.system('cp '+rootfilelist[0]+' '+name+'_'+JEC_STEM+'_skim_all.root ')
+		#otherwise we have to hadd all of them together
+		else :
+			ifiles=[]
+			procs = []
+			for i in range(len(rootfilelist)) :
+				if len(procs)>5 :
+					for proc in procs :
+						proc.join()
+					procs = []
+				thisfile=rootfilelist[i]
+				if i%100==0 :
+					if JEC_STEM=='nominal' :
+						cmd = 'hadd -f '+name+'_skim_all_'+str(len(ifiles))+'.root '+thisfile; ifiles.append(name+'_skim_all_'+str(len(ifiles))+'.root')
+					else :
+						cmd = 'hadd -f '+name+'_'+JEC_STEM+'_skim_all_'+str(len(ifiles))+'.root '+thisfile; ifiles.append(name+'_'+JEC_STEM+'_skim_all_'+str(len(ifiles))+'.root')
+				else :
+					cmd+=' '+thisfile
+				if (i+1)%100==0 or i==len(rootfilelist)-1 :
+					p = multiprocessing.Process(target=skimHaddRecoFilesParallel,args=([cmd],))
+					p.start()
+					procs.append(p)
+			for proc in procs :
+				proc.join()
+			#hadd all of the intermediately-sized files (or rename them if there's only one of each)
 			cmd_stub = name
-			if cmd_key!='' :
-				cmd_stub+='_'+cmd_key
+			if JEC_STEM!='nominal' :
+				cmd_stub+='_'+JEC_STEM
 			cmd_stub+='_skim_all.root'
-			if len(list_of_files)==1 :
-				cmd='mv '+list_of_files[0]+' '+cmd_stub
+			if len(ifiles)==1 :
+				cmd='mv '+ifiles[0]+' '+cmd_stub
 			else :
 				cmd='hadd -f '+cmd_stub
-				for ifile in list_of_files :
+				for ifile in ifiles :
 					cmd+=' '+ifile
 			print 'new hadd command: %s'%(cmd)
 			os.system(cmd)

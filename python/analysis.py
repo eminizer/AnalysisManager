@@ -21,12 +21,12 @@ class Analysis(object) :
 		newSample.populateFromLists(cats,datal,self._username)
 		self._samplelist.append(newSample)
 
-	def doAction(self,sample,astring,dojec) :
+	def doAction(self,sample,astring,dojec,donominal) :
 		astring = astring.lower()
 		if astring in self._possible_actions.keys()<0 :
 			print 'ERROR! action %s not available'%(astring)
 			return
-		return self._possible_actions[astring](sample,dojec)
+		return self._possible_actions[astring](sample,dojec,donominal)
 
 	def getSampleList(self) :
 		return self._samplelist
