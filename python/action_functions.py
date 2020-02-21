@@ -5,10 +5,12 @@ import multiprocessing
 from ROOT import TFile
 
 JEC_STEMS = ['nominal',
-			 'AK4JESPU_up','AK4JESEta_up','AK4JESPt_up','AK4JESScale_up','AK4JESTime_up','AK4JESFlav_up','AK4JERStat_up','AK4JERSys_up',
-			 'AK4JESPU_dn','AK4JESEta_dn','AK4JESPt_dn','AK4JESScale_dn','AK4JESTime_dn','AK4JESFlav_dn','AK4JERStat_dn','AK4JERSys_dn',
-			 'AK8JESPU_up','AK8JESEta_up','AK8JESPt_up','AK8JESScale_up','AK8JESTime_up','AK8JESFlav_up','AK8JERStat_up','AK8JERSys_up',
-			 'AK8JESPU_dn','AK8JESEta_dn','AK8JESPt_dn','AK8JESScale_dn','AK8JESTime_dn','AK8JESFlav_dn','AK8JERStat_dn','AK8JERSys_dn',]
+			 'JES_up','JES_dn','JER_up','JER_dn',
+			 #'AK4JESPU_up','AK4JESEta_up','AK4JESPt_up','AK4JESScale_up','AK4JESTime_up','AK4JESFlav_up','AK4JERStat_up','AK4JERSys_up',
+			 #'AK4JESPU_dn','AK4JESEta_dn','AK4JESPt_dn','AK4JESScale_dn','AK4JESTime_dn','AK4JESFlav_dn','AK4JERStat_dn','AK4JERSys_dn',
+			 #'AK8JESPU_up','AK8JESEta_up','AK8JESPt_up','AK8JESScale_up','AK8JESTime_up','AK8JESFlav_up','AK8JERStat_up','AK8JERSys_up',
+			 #'AK8JESPU_dn','AK8JESEta_dn','AK8JESPt_dn','AK8JESScale_dn','AK8JESTime_dn','AK8JESFlav_dn','AK8JERStat_dn','AK8JERSys_dn',
+			 ]
 
 def haddNtuplesParallel(haddjob,sampleeosurl) :
 	#the hadd command
@@ -23,18 +25,18 @@ def haddNtuplesParallel(haddjob,sampleeosurl) :
 def haddNTuples(sample,dojec,donominal) :
 	print 'hadding nTuples for sample '+sample.getShortName()
 	cwd = os.getcwd()
-	#remove the aggregated files that might already be in the directory
-	agg_filelist = sample.getAggregatedFileTuples()
-	for agg_file in agg_filelist :
-		subprocess.call('eos root://cmseos.fnal.gov rm '+agg_file[0][len('root://xxx.xxx.xxx.xxx:xxxx/'):],shell=True)
+	##remove the aggregated files that might already be in the directory
+	#agg_filelist = sample.getAggregatedFileTuples()
+	#for agg_file in agg_filelist :
+	#	subprocess.call('eos root://cmseos.fnal.gov rm '+agg_file[0][len('root://xxx.xxx.xxx.xxx:xxxx/'):],shell=True)
 	#get the list of raw file tuples (URL,size)
 	rawfile_tuples = sample.getRawFileTuples()
 	#make the list of hadd jobs
 	hadd_jobs = []
 	size_counter = 0.;
 	for rft in rawfile_tuples :
-		if size_counter==0. or size_counter+rft[1]>5000000000. or len(hadd_jobs[len(hadd_jobs)-1][1])>=500 : #5GB or 500 file limit
-		#	print 'size_counter is at %d'%(size_counter) #DEBUG
+		if size_counter==0. or size_counter+rft[1]>5000000000. or len(hadd_jobs[len(hadd_jobs)-1][1])>=250 : #5GB or 250 file limit
+			#print 'size_counter is at %d'%(size_counter) #DEBUG
 			hadd_jobs.append(['aggregated_'+sample.getShortName()+'_'+str(len(hadd_jobs))+'.root',[]])
 			size_counter=0.
 		size_counter+=rft[1]
@@ -145,11 +147,14 @@ def findFailedJobs(sample,dojec,donominal) :
 			continue
 		if JEC_STEM=='nominal' :
 			allrootfiles=glob.glob(name+'_*_tree.root')
+			rootfilelists[JEC_STEM] = []
 			for rfile in allrootfiles :
-				for JEC_STEM in JEC_STEMS :
-					if rfile.find(JEC_STEM)!=-1 :
-						allrootfiles.pop(allrootfiles.index(rfile))
-			rootfilelists[JEC_STEM]=allrootfiles
+				thisfilenom = True
+				for JEC_STEM2 in JEC_STEMS :
+					if JEC_STEM2!='nominal' and rfile.find(JEC_STEM2)!=-1 :
+						thisfilenom=False; break
+				if thisfilenom :
+					rootfilelists[JEC_STEM].append(rfile)
 		else :
 			rootfilelists[JEC_STEM]=glob.glob(name+'_'+JEC_STEM+'_*tree.root')
 		nJobs[JEC_STEM]=int(os.popen('cat ana.listOfJobs_'+JEC_STEM+' | wc -l').read())
@@ -211,7 +216,8 @@ def findFailedJobs(sample,dojec,donominal) :
 			os.system('voms-proxy-init --voms cms')
 			os.system('python ./runManySections.py --createCommandFile --addLog --setTarball=tarball.tgz ana.listOfJobs_rerun commands_rerun.cmd')
 			os.system('python ./runManySections.py --submitCondor --noDeleteCondor commands_rerun.cmd')
-	os.system('bash cleanup.bash')
+	if not os.path.isdir('output') :
+		os.system('bash cleanup.bash')
 	#return to the previous working directory
 	os.chdir(cwd)
 	print 'Done.'
@@ -238,11 +244,14 @@ def haddRecoFiles(sample,dojec,donominal) :
 		rootfilelist=None
 		if JEC_STEM=='nominal' :
 			allrootfiles=glob.glob(name+'_*_tree.root')
+			rootfilelist = []
 			for rfile in allrootfiles :
-				for JEC_STEM in JEC_STEMS :
-					if rfile.find(JEC_STEM)!=-1 :
-						allrootfiles.pop(allrootfiles.index(rfile))
-			rootfilelist=allrootfiles
+				thisfilenom = True
+				for JEC_STEM2 in JEC_STEMS :
+					if JEC_STEM2!='nominal' and rfile.find(JEC_STEM2)!=-1 :
+						thisfilenom=False; break
+				if thisfilenom :
+					rootfilelist.append(rfile)
 		else :
 			rootfilelist=glob.glob(name+'_'+JEC_STEM+'_*_tree.root')
 		#make the list of hadd jobs
@@ -344,11 +353,14 @@ def skimHaddRecoFiles(sample,dojec,donominal) :
 		rootfilelist=None
 		if JEC_STEM=='nominal' :
 			allrootfiles=glob.glob('*_skim.root')
+			rootfilelist = []
 			for rfile in allrootfiles :
-				for JEC_STEM in JEC_STEMS :
-					if rfile.find(JEC_STEM)!=-1 :
-						allrootfiles.pop(allrootfiles.index(rfile))
-			rootfilelist=allrootfiles
+				thisfilenom = True
+				for JEC_STEM2 in JEC_STEMS :
+					if JEC_STEM2!='nominal' and rfile.find(JEC_STEM2)!=-1 :
+						thisfilenom=False; break
+				if thisfilenom :
+					rootfilelist.append(rfile)
 		else :
 			rootfilelist=glob.glob('*_'+JEC_STEM+'_*_skim.root')
 		#if there's only one file just copy it

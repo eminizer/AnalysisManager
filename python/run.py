@@ -50,6 +50,10 @@ for i in range(len(this_analysis.getSampleList())) :
 	thisJEC = options.dojec.lower()
 	if thisJEC=='def' : #set to yes for MC and no for data
 		thisJEC=False if (sample.getShortName().find('SingleMu_Run')!=-1 or sample.getShortName().find('SingleEl_Run')!=-1) else True
+	elif thisJEC=='yes' :
+		thisJEC=True
+	elif thisJEC=='no' :
+		thisJEC=False
 	if 'all' in sgroups or thisSGroup in sgroups or thisSGroup.lower() in sgroups or str(i) in sgroups or sample.getShortName().lower() in sgroups or thisRGroup in rgroups :
 		#make sure the user intends to actually operate on this sample
 		check = 'yes'
